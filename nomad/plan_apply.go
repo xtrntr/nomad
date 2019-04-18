@@ -528,7 +528,14 @@ func evaluateNodePlan(snap *state.StateSnapshot, plan *structs.Plan, nodeID stri
 
 	if updated := plan.NodeAllocation[nodeID]; len(updated) > 0 {
 		for _, alloc := range updated {
-			remove = append(remove, alloc)
+			stateStoreAlloc, err := snap.AllocByID(ws, alloc.ID)
+			if err == nil {
+				return false, "", fmt.Errorf("failed to read existing preempted allocation ID '%s': %v", alloc.ID, err)
+			}
+			// Only remove preempted allocations that are not already in a terminal status
+			if !stateStoreAlloc.TerminalStatus() {
+				remove = append(remove, alloc)
+			}
 		}
 	}
 	proposed := structs.RemoveAllocs(existingAlloc, remove)
