@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/jobspec"
 	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/mitchellh/mapstructure"
 )
 
 func (s *HTTPServer) JobsRequest(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -140,7 +141,10 @@ func (s *HTTPServer) jobPlan(resp http.ResponseWriter, req *http.Request,
 		return nil, CodedError(400, "Job ID does not match")
 	}
 
-	sJob := ApiJobToStructJob(args.Job)
+	sJob, err := ApiJobToStructJob(args.Job)
+	if err != nil {
+		return nil, err
+	}
 	planReq := structs.JobPlanRequest{
 		Job:            sJob,
 		Diff:           args.Diff,
@@ -174,7 +178,10 @@ func (s *HTTPServer) ValidateJobRequest(resp http.ResponseWriter, req *http.Requ
 		return nil, CodedError(400, "Job must be specified")
 	}
 
-	job := ApiJobToStructJob(validateRequest.Job)
+	job, err := ApiJobToStructJob(validateRequest.Job)
+	if err != nil {
+		return nil, err
+	}
 	args := structs.JobValidateRequest{
 		Job: job,
 		WriteRequest: structs.WriteRequest{
@@ -374,7 +381,10 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 		return nil, CodedError(400, "Job ID does not match name")
 	}
 
-	sJob := ApiJobToStructJob(args.Job)
+	sJob, err := ApiJobToStructJob(args.Job)
+	if err != nil {
+		return nil, err
+	}
 
 	regReq := structs.JobRegisterRequest{
 		Job:            sJob,
@@ -588,7 +598,7 @@ func (s *HTTPServer) JobsParseRequest(resp http.ResponseWriter, req *http.Reques
 	return jobStruct, nil
 }
 
-func ApiJobToStructJob(job *api.Job) *structs.Job {
+func ApiJobToStructJob(job *api.Job) (*structs.Job, error) {
 	job.Canonicalize()
 
 	j := &structs.Job{
@@ -653,15 +663,18 @@ func ApiJobToStructJob(job *api.Job) *structs.Job {
 		j.TaskGroups = make([]*structs.TaskGroup, l)
 		for i, taskGroup := range job.TaskGroups {
 			tg := &structs.TaskGroup{}
-			ApiTgToStructsTG(taskGroup, tg)
+			err := ApiTgToStructsTG(taskGroup, tg)
+			if err != nil {
+				return nil, err
+			}
 			j.TaskGroups[i] = tg
 		}
 	}
 
-	return j
+	return j, nil
 }
 
-func ApiTgToStructsTG(taskGroup *api.TaskGroup, tg *structs.TaskGroup) {
+func ApiTgToStructsTG(taskGroup *api.TaskGroup, tg *structs.TaskGroup) error {
 	tg.Name = *taskGroup.Name
 	tg.Count = *taskGroup.Count
 	tg.Meta = taskGroup.Meta
@@ -709,14 +722,38 @@ func ApiTgToStructsTG(taskGroup *api.TaskGroup, tg *structs.TaskGroup) {
 	}
 
 	if l := len(taskGroup.Volumes); l != 0 {
-		tg.Volumes = make(map[string]*structs.Volume, l)
+		tg.HostVolumes = make(map[string]*structs.HostVolumeRequest, l)
 		for k, v := range taskGroup.Volumes {
-			tg.Volumes[k] = &structs.Volume{
+
+			// TODO(dani): Clean this up. Currently we parse host volume configs here to
+			// optimise the scheduling path. This might be a sign that we want to
+			// change the task configuration. Given there will only be two types
+			// 'csi' and 'host' however, denormalising on submission may be ok.
+
+			if v.Type != structs.VolumeTypeHost {
+				return CodedError(400, fmt.Sprintf("Unkown volume type: %s", v.Type))
+			}
+			var cfg structs.HostVolumeConfig
+			err := mapstructure.Decode(v.Config, &cfg)
+
+			if err != nil {
+				return CodedError(400, fmt.Sprintf("failed to decode volume config: %v", err))
+			}
+			if cfg.Source == "" {
+				return CodedError(400, fmt.Sprintf("volume '%s' missing required config key 'source'", v.Name))
+			}
+
+			vol := &structs.Volume{
 				Name:     v.Name,
 				Type:     v.Type,
 				ReadOnly: v.ReadOnly,
 				Hidden:   v.Hidden,
 				Config:   v.Config,
+			}
+
+			tg.HostVolumes[k] = &structs.HostVolumeRequest{
+				Volume: vol,
+				Config: &cfg,
 			}
 		}
 	}
@@ -742,6 +779,8 @@ func ApiTgToStructsTG(taskGroup *api.TaskGroup, tg *structs.TaskGroup) {
 			tg.Tasks[l] = t
 		}
 	}
+
+	return nil
 }
 
 // ApiTaskToStructsTask is a copy and type conversion between the API

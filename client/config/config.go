@@ -220,7 +220,7 @@ type Config struct {
 	StateDBFactory state.NewStateDBFunc
 
 	// HostVolumes is the set of configured host volumes
-	HostVolumes map[string]*structs.HostVolumeConfig
+	HostVolumes map[string]*structs.ClientHostVolumeConfig
 }
 
 func (c *Config) Copy() *Config {

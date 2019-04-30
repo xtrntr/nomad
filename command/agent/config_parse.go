@@ -1089,8 +1089,8 @@ func unwrapLegacyHCLObjectKeysFromJSON(item *ast.ObjectItem, depth int) {
 	}
 }
 
-func parseHostVolumes(out *map[string]*structs.HostVolumeConfig, list *ast.ObjectList) error {
-	volumes := make(map[string]*structs.HostVolumeConfig, len(list.Items))
+func parseHostVolumes(out *map[string]*structs.ClientHostVolumeConfig, list *ast.ObjectList) error {
+	volumes := make(map[string]*structs.ClientHostVolumeConfig, len(list.Items))
 	for _, item := range list.Items {
 		n := item.Keys[0].Token.Value().(string)
 		valid := []string{
@@ -1108,7 +1108,7 @@ func parseHostVolumes(out *map[string]*structs.HostVolumeConfig, list *ast.Objec
 			return err
 		}
 
-		var result structs.HostVolumeConfig
+		var result structs.ClientHostVolumeConfig
 		dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 			WeaklyTypedInput: true,
 			Result:           &result,
