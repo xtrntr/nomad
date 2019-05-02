@@ -140,13 +140,19 @@ func (s *HTTPServer) jobPlan(resp http.ResponseWriter, req *http.Request,
 		return nil, CodedError(400, "Job ID does not match")
 	}
 
+	// Backfill region from Job, if not present in WriteRequest
+	region := args.WriteRequest.Region
+	if region == "" {
+		region = *args.Job.Region
+	}
+
 	sJob := ApiJobToStructJob(args.Job)
 	planReq := structs.JobPlanRequest{
 		Job:            sJob,
 		Diff:           args.Diff,
 		PolicyOverride: args.PolicyOverride,
 		WriteRequest: structs.WriteRequest{
-			Region: args.WriteRequest.Region,
+			Region: region,
 		},
 	}
 	s.parseWriteRequest(req, &planReq.WriteRequest)
@@ -376,13 +382,19 @@ func (s *HTTPServer) jobUpdate(resp http.ResponseWriter, req *http.Request,
 
 	sJob := ApiJobToStructJob(args.Job)
 
+	// Backfill region from Job, if not present in WriteRequest
+	region := args.WriteRequest.Region
+	if region == "" {
+		region = *args.Job.Region
+	}
+
 	regReq := structs.JobRegisterRequest{
 		Job:            sJob,
 		EnforceIndex:   args.EnforceIndex,
 		JobModifyIndex: args.JobModifyIndex,
 		PolicyOverride: args.PolicyOverride,
 		WriteRequest: structs.WriteRequest{
-			Region:    args.WriteRequest.Region,
+			Region:    region,
 			AuthToken: args.WriteRequest.SecretID,
 		},
 	}
