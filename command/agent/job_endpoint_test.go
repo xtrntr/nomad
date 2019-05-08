@@ -465,6 +465,62 @@ func TestHTTP_JobUpdate(t *testing.T) {
 	})
 }
 
+func TestHTTP_JobUpdateRegion(t *testing.T) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
+		// Create the job
+		job := MockRegionalJob()
+		args := api.JobRegisterRequest{
+			Job: job,
+			WriteRequest: api.WriteRequest{
+				Namespace: api.DefaultNamespace,
+			},
+		}
+		buf := encodeReq(args)
+
+		// Make the HTTP request
+		req, err := http.NewRequest("PUT", "/v1/job/"+*job.ID, buf)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		respW := httptest.NewRecorder()
+
+		// Make the request
+		obj, err := s.Server.JobSpecificRequest(respW, req)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		// Check the response
+		dereg := obj.(structs.JobRegisterResponse)
+		if dereg.EvalID == "" {
+			t.Fatalf("bad: %v", dereg)
+		}
+
+		// Check for the index
+		if respW.HeaderMap.Get("X-Nomad-Index") == "" {
+			t.Fatalf("missing index")
+		}
+
+		// Check the job is registered
+		getReq := structs.JobSpecificRequest{
+			JobID: *job.ID,
+			QueryOptions: structs.QueryOptions{
+				Region:    "not-global",
+				Namespace: structs.DefaultNamespace,
+			},
+		}
+		var getResp structs.SingleJobResponse
+		if err := s.Agent.RPC("Job.GetJob", &getReq, &getResp); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		if getResp.Job == nil {
+			t.Fatalf("job does not exist")
+		}
+	})
+}
+
 func TestHTTP_JobDelete(t *testing.T) {
 	t.Parallel()
 	httpTest(t, nil, func(s *TestAgent) {
@@ -1021,6 +1077,46 @@ func TestHTTP_JobPlan(t *testing.T) {
 		}
 	})
 }
+
+func TestHTTP_JobPlanRegion(t *testing.T) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
+		// Create the job
+		job := MockRegionalJob()
+		args := api.JobPlanRequest{
+			Job:  job,
+			Diff: true,
+			WriteRequest: api.WriteRequest{
+				Namespace: api.DefaultNamespace,
+			},
+		}
+		buf := encodeReq(args)
+
+		// Make the HTTP request
+		req, err := http.NewRequest("PUT", "/v1/job/"+*job.ID+"/plan", buf)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		respW := httptest.NewRecorder()
+
+		// Make the request
+		obj, err := s.Server.JobSpecificRequest(respW, req)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		// Check the response
+		plan := obj.(structs.JobPlanResponse)
+		if plan.Annotations == nil {
+			t.Fatalf("bad: %v", plan)
+		}
+
+		if plan.Diff == nil {
+			t.Fatalf("bad: %v", plan)
+		}
+	})
+}
+
 
 func TestHTTP_JobDispatch(t *testing.T) {
 	t.Parallel()
