@@ -112,6 +112,6 @@ func MockPeriodicJob() *api.Job {
 
 func MockRegionalJob() *api.Job {
 	j := MockJob()
-	j.Region = helper.StringToPtr("not-global")
+	j.Region = helper.StringToPtr("north-america")
 	return j
 }
